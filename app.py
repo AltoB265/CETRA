@@ -134,22 +134,24 @@ def contar_piezas(matriz):
                 conteo[celda["pieza"]] += 1
     return conteo
 
-def calcular_produccion_diaria():
+
+def calcular_produccion(hornos_estado, ciclos_horno, carros_distribucion):
+    """Compute production using plain dictionaries (no Streamlit state)."""
     produccion_final = {pieza: 0 for pieza in DEMANDA_INICIAL}
-    
-    for horno_id, matriz in st.session_state.hornos_estado.items():
+
+    for horno_id, matriz in hornos_estado.items():
         if matriz is None:
             continue
-            
+
         conteo = contar_piezas(matriz)
-        ciclos_diarios = st.session_state.ciclos_horno['H1' if horno_id == 'H1' else 'H2']
-        carros = st.session_state.carros_distribucion[horno_id]
+        ciclos_diarios = ciclos_horno['H1' if horno_id == 'H1' else 'H2']
+        carros = carros_distribucion[horno_id]
         factor_ciclos = ciclos_diarios / 113
-        
+
         for pieza, cantidad in conteo.items():
             if cantidad == 0:
                 continue
-                
+
             if pieza == 'TQ:PD':
                 produccion_final['TQ'] += int(cantidad * carros * factor_ciclos)
                 produccion_final['PD'] += int(cantidad * carros * factor_ciclos)
@@ -166,8 +168,17 @@ def calcular_produccion_diaria():
                 produccion_final['LVS'] += int(3 * cantidad * carros * factor_ciclos)
             elif pieza in produccion_final:
                 produccion_final[pieza] += int(cantidad * carros * factor_ciclos)
-    
+
     return produccion_final
+
+
+def calcular_produccion_diaria():
+    """Wrapper over :func:`calcular_produccion` using Streamlit session state."""
+    return calcular_produccion(
+        st.session_state.hornos_estado,
+        st.session_state.ciclos_horno,
+        st.session_state.carros_distribucion,
+    )
 
 def calcular_cumplimiento_demanda(produccion):
     cumplimiento = {}
