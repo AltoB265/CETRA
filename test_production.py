@@ -46,3 +46,20 @@ def test_auto_ubicar():
     carros = {'H1': 113, 'H2A': 113, 'H2B': 113, 'H2C': 113}
     resultado = app.auto_ubicar_piezas(estado, ciclos, carros, app.DEMANDA_INICIAL)
     assert resultado['H1'][0][0]['pieza'] is not None
+
+
+def test_auto_ubicar_respects_demand():
+    estado = {
+        'H1': [[{'pieza': None, 'es_inicio': False, 'pieza_origen': None}]],
+        'H2A': [[{'pieza': None, 'es_inicio': False, 'pieza_origen': None}]],
+        'H2B': [[{'pieza': None, 'es_inicio': False, 'pieza_origen': None}]],
+        'H2C': [[{'pieza': None, 'es_inicio': False, 'pieza_origen': None}]],
+    }
+    ciclos = {'H1': 159, 'H2': 141}
+    carros = {'H1': 113, 'H2A': 113, 'H2B': 113, 'H2C': 113}
+    demanda = {'LV': 160, 'TQ': 0, 'LVS': 0, 'TQ:PD': 0, 'LV:PD': 0,
+               'TZ': 0, 'TZ OP': 0, 'OP': 0, 'OR': 0, 'PD': 0,
+               'X': 0, '2TQ': 0, '2X': 0, '2LVS': 0, '3LVS': 0}
+    resultado = app.auto_ubicar_piezas(estado, ciclos, carros, demanda)
+    produccion = app.calcular_produccion(resultado, ciclos, carros, demanda)
+    assert produccion['LV'] >= 159

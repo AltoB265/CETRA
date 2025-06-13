@@ -180,6 +180,24 @@ def auto_ubicar_piezas(hornos_estado, ciclos_horno, carros_distribucion, demanda
         for p in demanda
     }
 
+    def delta_produccion(horno_id: str, pieza: str) -> dict[str, float]:
+        """Return the production increment if one slot is filled with ``pieza``."""
+        factor = ciclos_horno['H1' if horno_id == 'H1' else 'H2'] / 113
+        carros = carros_distribucion[horno_id]
+        if pieza == 'TQ:PD':
+            return {'TQ': carros * factor, 'PD': carros * factor}
+        if pieza == 'LV:PD':
+            return {'LV': carros * factor, 'PD': carros * factor}
+        if pieza == '2TQ':
+            return {'TQ': 2 * carros * factor}
+        if pieza == '2X':
+            return {'X': 2 * carros * factor}
+        if pieza == '2LVS':
+            return {'LVS': 2 * carros * factor}
+        if pieza == '3LVS':
+            return {'LVS': 3 * carros * factor}
+        return {pieza: carros * factor}
+
     for horno_id, matriz in hornos_estado.items():
         for fila in range(len(matriz)):
             for col in range(len(matriz[0])):
@@ -194,7 +212,8 @@ def auto_ubicar_piezas(hornos_estado, ciclos_horno, carros_distribucion, demanda
                     if es_posicion_valida(horno_id, matriz, fila, col, pieza):
                         f_occ, c_occ = get_ocupacion_pieza(pieza)
                         colocar_pieza_con_ocupacion(matriz, fila, col, pieza, f_occ, c_occ)
-                        faltante[pieza] -= 1
+                        for p, inc in delta_produccion(horno_id, pieza).items():
+                            faltante[p] = max(faltante.get(p, 0) - inc, 0)
                         break
 
     return hornos_estado
