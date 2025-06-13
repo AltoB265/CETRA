@@ -63,3 +63,11 @@ def test_auto_ubicar_respects_demand():
     resultado = app.auto_ubicar_piezas(estado, ciclos, carros, demanda)
     produccion = app.calcular_produccion(resultado, ciclos, carros, demanda)
     assert produccion['LV'] >= 159
+
+
+def test_diferencia_calculation():
+    prod = {'LV': 200}
+    demanda = {'LV': 180}
+    cumplimiento, diferencia = app.calcular_cumplimiento_demanda(prod, demanda)
+    assert diferencia['LV'] == 20
+    assert cumplimiento['LV'] == 100

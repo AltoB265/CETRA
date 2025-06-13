@@ -255,7 +255,7 @@ def calcular_cumplimiento_demanda(produccion, demanda):
             cumplimiento[pieza] = min(producidas / d * 100, 100)
         else:
             cumplimiento[pieza] = 100
-        diferencia[pieza] = d - producidas
+        diferencia[pieza] = producidas - d
 
     return cumplimiento, diferencia
 
