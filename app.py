@@ -172,6 +172,43 @@ def calcular_produccion(hornos_estado, ciclos_horno, carros_distribucion):
     return produccion_final
 
 
+def auto_ubicar_piezas(hornos_estado, ciclos_horno, carros_distribucion):
+    """Fill empty slots prioritizing pieces with highest unmet demand."""
+    produccion_actual = calcular_produccion(hornos_estado, ciclos_horno, carros_distribucion)
+    faltante = {
+        p: DEMANDA_INICIAL[p] - produccion_actual.get(p, 0)
+        for p in DEMANDA_INICIAL
+    }
+
+    for horno_id, matriz in hornos_estado.items():
+        for fila in range(len(matriz)):
+            for col in range(len(matriz[0])):
+                if matriz[fila][col]["pieza"] is not None:
+                    continue
+
+                candidatos = [p for p in PIEZA_INFO if horno_id in PIEZA_INFO[p]['hornos']]
+                candidatos.sort(key=lambda p: faltante.get(p, 0), reverse=True)
+                for pieza in candidatos:
+                    if faltante.get(pieza, 0) <= 0:
+                        continue
+                    if es_posicion_valida(horno_id, matriz, fila, col, pieza):
+                        f_occ, c_occ = get_ocupacion_pieza(pieza)
+                        colocar_pieza_con_ocupacion(matriz, fila, col, pieza, f_occ, c_occ)
+                        faltante[pieza] -= 1
+                        break
+
+    return hornos_estado
+
+
+def auto_ubicar_piezas_state():
+    """Wrapper to auto-place pieces using Streamlit session state."""
+    st.session_state.hornos_estado = auto_ubicar_piezas(
+        st.session_state.hornos_estado,
+        st.session_state.ciclos_horno,
+        st.session_state.carros_distribucion,
+    )
+
+
 def calcular_produccion_diaria():
     """Wrapper over :func:`calcular_produccion` using Streamlit session state."""
     return calcular_produccion(
@@ -267,6 +304,8 @@ with col5:
         st.session_state.hornos_estado['H2A'] = inicializar_h2a()
         st.session_state.hornos_estado['H2B'] = inicializar_h2b()
         st.session_state.hornos_estado['H2C'] = inicializar_h2c()
+
+st.sidebar.button("Auto Ubicar Piezas", on_click=auto_ubicar_piezas_state)
 
 # cuadrícula del horno
 def generar_cuadricula_horno(horno_id, matriz):

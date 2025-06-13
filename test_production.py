@@ -33,3 +33,16 @@ def test_special_pieces():
     assert result['PD'] == expected_pd
     assert result['LV'] == expected_lv
     assert result['X'] == expected_x
+
+
+def test_auto_ubicar():
+    estado = {
+        'H1': [[{'pieza': None, 'es_inicio': False, 'pieza_origen': None}]],
+        'H2A': [[{'pieza': None, 'es_inicio': False, 'pieza_origen': None}]],
+        'H2B': [[{'pieza': None, 'es_inicio': False, 'pieza_origen': None}]],
+        'H2C': [[{'pieza': None, 'es_inicio': False, 'pieza_origen': None}]],
+    }
+    ciclos = {'H1': 159, 'H2': 141}
+    carros = {'H1': 113, 'H2A': 113, 'H2B': 113, 'H2C': 113}
+    resultado = app.auto_ubicar_piezas(estado, ciclos, carros)
+    assert resultado['H1'][0][0]['pieza'] is not None
