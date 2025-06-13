@@ -85,3 +85,19 @@ def test_auto_ubicar_prioridad_tz_vs_lvs():
     demanda = {'TZ': 1, 'LVS': 1000}
     resultado = app.auto_ubicar_piezas(estado, ciclos, carros, demanda)
     assert resultado['H1'][0][0]['pieza'] == 'TZ'
+
+
+def test_editar_celda_remueve_completo():
+    matriz = app.inicializar_matriz_detallada(2, 10)
+    app.colocar_pieza_con_ocupacion(matriz, 0, 0, '2LVS', 1, 5)
+    app.editar_celda(matriz, 'H1', 0, 2, None)
+    assert all(c['pieza'] is None for fila in matriz for c in fila)
+
+
+def test_editar_celda_restaura_si_invalido():
+    matriz = app.inicializar_matriz_detallada(1, 2)
+    matriz[0][0] = {'pieza': 'TZ', 'es_inicio': True, 'pieza_origen': (0, 0)}
+    matriz[0][1] = {'pieza': 'LV', 'es_inicio': True, 'pieza_origen': (0, 1)}
+    ok = app.editar_celda(matriz, 'H1', 0, 1, 'TZ')
+    assert not ok
+    assert matriz[0][1]['pieza'] == 'LV'

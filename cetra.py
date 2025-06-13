@@ -116,15 +116,20 @@ def es_posicion_valida(horno_id, matriz, fila, col, pieza):
 
 
 def editar_celda(matriz, horno_id, fila, col, nueva_pieza):
-    """Modify a cell removing the current block and optionally placing a new piece."""
+    """Modify a cell removing the current block and optionally placing a new piece.
+
+    If the new placement is invalid, the original piece is restored.
+    """
     celda = matriz[fila][col]
     pieza_actual = celda["pieza"]
     es_inicio = celda["es_inicio"]
 
+    original_data = None
     if pieza_actual:
         origen_fila, origen_col = (fila, col) if es_inicio else celda["pieza_origen"]
         pieza_origen = matriz[origen_fila][origen_col]["pieza"]
         filas_occ, cols_occ = get_ocupacion_pieza(pieza_origen)
+        original_data = (origen_fila, origen_col, pieza_origen, filas_occ, cols_occ)
         for f in range(filas_occ):
             for c in range(cols_occ):
                 if origen_fila + f < len(matriz) and origen_col + c < len(matriz[0]):
@@ -137,6 +142,10 @@ def editar_celda(matriz, horno_id, fila, col, nueva_pieza):
             colocar_pieza_con_ocupacion(matriz, fila, col, nueva_pieza, filas_ocupadas, cols_ocupadas)
             return True
         else:
+            # restore original piece if placement fails
+            if original_data:
+                o_f, o_c, pieza_rest, f_occ, c_occ = original_data
+                colocar_pieza_con_ocupacion(matriz, o_f, o_c, pieza_rest, f_occ, c_occ)
             return False
     return True
 
