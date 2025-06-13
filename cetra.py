@@ -228,8 +228,12 @@ def auto_ubicar_piezas_state():
         st.session_state.demanda,
     )
     # trigger a rerun so production results refresh immediately
-    if st.runtime.exists():
-        st.experimental_rerun()
+    rerun_fn = getattr(st, "experimental_rerun", getattr(st, "rerun", None))
+    if callable(rerun_fn):
+        try:
+            rerun_fn()
+        except RuntimeError:
+            pass
 
 
 def calcular_produccion_diaria():
