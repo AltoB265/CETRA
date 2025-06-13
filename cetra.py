@@ -135,9 +135,9 @@ def contar_piezas(matriz):
     return conteo
 
 
-def calcular_produccion(hornos_estado, ciclos_horno, carros_distribucion):
+def calcular_produccion(hornos_estado, ciclos_horno, carros_distribucion, demanda):
     """Compute production using plain dictionaries (no Streamlit state)."""
-    produccion_final = {pieza: 0 for pieza in DEMANDA_INICIAL}
+    produccion_final = {pieza: 0 for pieza in demanda}
 
     for horno_id, matriz in hornos_estado.items():
         if matriz is None:
@@ -172,12 +172,12 @@ def calcular_produccion(hornos_estado, ciclos_horno, carros_distribucion):
     return produccion_final
 
 
-def auto_ubicar_piezas(hornos_estado, ciclos_horno, carros_distribucion):
+def auto_ubicar_piezas(hornos_estado, ciclos_horno, carros_distribucion, demanda):
     """Fill empty slots prioritizing pieces with highest unmet demand."""
-    produccion_actual = calcular_produccion(hornos_estado, ciclos_horno, carros_distribucion)
+    produccion_actual = calcular_produccion(hornos_estado, ciclos_horno, carros_distribucion, demanda)
     faltante = {
-        p: DEMANDA_INICIAL[p] - produccion_actual.get(p, 0)
-        for p in DEMANDA_INICIAL
+        p: demanda[p] - produccion_actual.get(p, 0)
+        for p in demanda
     }
 
     for horno_id, matriz in hornos_estado.items():
@@ -206,6 +206,7 @@ def auto_ubicar_piezas_state():
         st.session_state.hornos_estado,
         st.session_state.ciclos_horno,
         st.session_state.carros_distribucion,
+        st.session_state.demanda,
     )
 
 
@@ -215,16 +216,17 @@ def calcular_produccion_diaria():
         st.session_state.hornos_estado,
         st.session_state.ciclos_horno,
         st.session_state.carros_distribucion,
+        st.session_state.demanda,
     )
 
-def calcular_cumplimiento_demanda(produccion):
+def calcular_cumplimiento_demanda(produccion, demanda):
     cumplimiento = {}
     insatisfaccion = {}
     
-    for pieza, demanda in DEMANDA_INICIAL.items():
-        if demanda > 0:
-            cumplimiento[pieza] = min(produccion[pieza] / demanda * 100, 100) if demanda > 0 else 100
-            insatisfaccion[pieza] = max(demanda - produccion[pieza], 0)
+    for pieza, d in demanda.items():
+        if d > 0:
+            cumplimiento[pieza] = min(produccion.get(pieza, 0) / d * 100, 100)
+            insatisfaccion[pieza] = max(d - produccion.get(pieza, 0), 0)
         else:
             cumplimiento[pieza] = 100
             insatisfaccion[pieza] = 0
@@ -245,6 +247,9 @@ if 'carros_distribucion' not in st.session_state:
 
 if 'ciclos_horno' not in st.session_state:
     st.session_state.ciclos_horno = {'H1': 159, 'H2': 141}
+
+if 'demanda' not in st.session_state:
+    st.session_state.demanda = DEMANDA_INICIAL.copy()
 
 # config. de la pagina
 st.title("🏭 Sistema CETRA")
@@ -278,6 +283,15 @@ with st.sidebar:
     total_carros_h2 = sum([st.session_state.carros_distribucion[key] for key in ['H2A', 'H2B', 'H2C']])
     if total_carros_h2 != 113:
         st.error(f"El total de carros del Horno 2 debe ser 113. Actual: {total_carros_h2}")
+
+    st.subheader("Demanda por Pieza")
+    for pieza in st.session_state.demanda:
+        st.session_state.demanda[pieza] = st.number_input(
+            pieza,
+            min_value=0,
+            value=st.session_state.demanda[pieza],
+            step=1,
+        )
 
 # reiniciar
 col1, col2, col3, col4, col5 = st.columns(5)
@@ -402,18 +416,21 @@ with tab4:
 st.header("Resultados de Producción")
 
 produccion = calcular_produccion_diaria()
-cumplimiento, insatisfaccion = calcular_cumplimiento_demanda(produccion)
+cumplimiento, insatisfaccion = calcular_cumplimiento_demanda(
+    produccion,
+    st.session_state.demanda,
+)
 
 col1, col2 = st.columns(2)
 
 with col1:
     st.subheader("Cumplimiento de Demanda")
     df_resultados = pd.DataFrame({
-        'Pieza': list(DEMANDA_INICIAL.keys()),
-        'Demanda': [DEMANDA_INICIAL[p] for p in DEMANDA_INICIAL],
-        'Producción': [produccion[p] for p in DEMANDA_INICIAL],
-        'Cumplimiento (%)': [cumplimiento[p] for p in DEMANDA_INICIAL],
-        'Insatisfecha': [insatisfaccion[p] for p in DEMANDA_INICIAL]
+        'Pieza': list(st.session_state.demanda.keys()),
+        'Demanda': [st.session_state.demanda[p] for p in st.session_state.demanda],
+        'Producción': [produccion[p] for p in st.session_state.demanda],
+        'Cumplimiento (%)': [cumplimiento[p] for p in st.session_state.demanda],
+        'Insatisfecha': [insatisfaccion[p] for p in st.session_state.demanda]
     })
     
     st.dataframe(df_resultados.style.format({
@@ -427,8 +444,14 @@ with col1:
 
 with col2:
     st.subheader("Masa Total")
-    peso_programado = sum(DEMANDA_INICIAL[p] * PIEZA_INFO[p]['peso'] for p in DEMANDA_INICIAL)
-    peso_cargado = sum(produccion[p] * PIEZA_INFO[p]['peso'] for p in DEMANDA_INICIAL)
+    peso_programado = sum(
+        st.session_state.demanda[p] * PIEZA_INFO[p]['peso']
+        for p in st.session_state.demanda
+    )
+    peso_cargado = sum(
+        produccion[p] * PIEZA_INFO[p]['peso']
+        for p in st.session_state.demanda
+    )
     
     st.metric("Peso Programado (kg)", f"{peso_programado:.2f}")
     st.metric("Peso Cargado (kg)", f"{peso_cargado:.2f}")

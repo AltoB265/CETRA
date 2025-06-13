@@ -1,4 +1,4 @@
-import app
+import cetra as app
 
 
 def test_single_pieces():
@@ -10,7 +10,7 @@ def test_single_pieces():
     }
     ciclos = {'H1': 159, 'H2': 141}
     carros = {'H1': 113, 'H2A': 113, 'H2B': 113, 'H2C': 113}
-    result = app.calcular_produccion(hornos_estado, ciclos, carros)
+    result = app.calcular_produccion(hornos_estado, ciclos, carros, app.DEMANDA_INICIAL)
     assert result['LV'] == 159
     assert result['TQ'] == 423
 
@@ -24,7 +24,7 @@ def test_special_pieces():
     }
     ciclos = {'H1': 159, 'H2': 141}
     carros = {'H1': 113, 'H2A': 113, 'H2B': 113, 'H2C': 113}
-    result = app.calcular_produccion(hornos_estado, ciclos, carros)
+    result = app.calcular_produccion(hornos_estado, ciclos, carros, app.DEMANDA_INICIAL)
     expected_tq = int(2 * 113 * (159/113)) + int(113 * (141/113))  # 2TQ from H1 and TQ from TQ:PD
     expected_pd = int(113 * (141/113)) + int(113 * (141/113))  # PD from LV:PD and TQ:PD
     expected_lv = int(113 * (141/113))
@@ -44,5 +44,5 @@ def test_auto_ubicar():
     }
     ciclos = {'H1': 159, 'H2': 141}
     carros = {'H1': 113, 'H2A': 113, 'H2B': 113, 'H2C': 113}
-    resultado = app.auto_ubicar_piezas(estado, ciclos, carros)
+    resultado = app.auto_ubicar_piezas(estado, ciclos, carros, app.DEMANDA_INICIAL)
     assert resultado['H1'][0][0]['pieza'] is not None
