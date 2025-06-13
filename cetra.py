@@ -5,6 +5,9 @@ import plotly.express as px
 
 st.set_page_config(page_title="Sistema experto CETRA", page_icon="🏭", layout="wide")
 
+if 'iteration' not in st.session_state:
+    st.session_state.iteration = 0
+
 PIEZA_INFO = {
     'TZ': {'espacios': 1, 'peso': 17.03, 'color': '#FF5733', 'hornos': ['H1', 'H2A', 'H2B', 'H2C']},
     'LV': {'espacios': 1, 'peso': 9.10, 'color': '#33FF57', 'hornos': ['H1', 'H2A', 'H2B', 'H2C']},
@@ -433,13 +436,11 @@ def generar_cuadricula_horno(horno_id, matriz):
                         unsafe_allow_html=True
                     )
                 opciones = [None] + [p for p in PIEZA_INFO if horno_id in PIEZA_INFO[p]['hornos']]
-                key = f"{horno_id}-{fila}-{col}"
-                if key not in st.session_state:
-                    st.session_state[key] = pieza_actual
+                key = f"{horno_id}-{fila}-{col}-{st.session_state.iteration}"
                 pieza_seleccionada = st.selectbox(
                     label=" ",
                     options=opciones,
-                    index=opciones.index(st.session_state[key]) if st.session_state[key] in opciones else 0,
+                    index=opciones.index(pieza_actual) if pieza_actual in opciones else 0,
                     key=key,
                     label_visibility="collapsed"
                 )
@@ -448,7 +449,6 @@ def generar_cuadricula_horno(horno_id, matriz):
                     ok = editar_celda(matriz, horno_id, fila, col, pieza_seleccionada)
                     if not ok:
                         st.error(f"No se puede colocar {pieza_seleccionada} en esta posición")
-                        st.session_state[key] = pieza_actual
 
 tab1, tab2, tab3, tab4 = st.tabs(["Horno 1 (A)", "Horno 2 (A)", "Horno 2 (B)", "Horno 2 (C)"])
 
@@ -551,5 +551,7 @@ st.markdown("""
 Este sistema experto utiliza reglas heurísticas para optimizar la distribución de piezas cerámicas en hornos túnel.
 El objetivo es maximizar la eficiencia cargando la mayor cantidad posible de piezas favoreciendo la relación MV/MM.
 """)
+
+st.session_state.iteration += 1
 
 #             
