@@ -434,11 +434,12 @@ def generar_cuadricula_horno(horno_id, matriz):
                     )
                 opciones = [None] + [p for p in PIEZA_INFO if horno_id in PIEZA_INFO[p]['hornos']]
                 key = f"{horno_id}-{fila}-{col}"
-                st.session_state[key] = pieza_actual
+                if key not in st.session_state:
+                    st.session_state[key] = pieza_actual
                 pieza_seleccionada = st.selectbox(
                     label=" ",
                     options=opciones,
-                    index=0 if pieza_actual is None else opciones.index(pieza_actual),
+                    index=opciones.index(st.session_state[key]) if st.session_state[key] in opciones else 0,
                     key=key,
                     label_visibility="collapsed"
                 )
@@ -447,6 +448,7 @@ def generar_cuadricula_horno(horno_id, matriz):
                     ok = editar_celda(matriz, horno_id, fila, col, pieza_seleccionada)
                     if not ok:
                         st.error(f"No se puede colocar {pieza_seleccionada} en esta posición")
+                        st.session_state[key] = pieza_actual
 
 tab1, tab2, tab3, tab4 = st.tabs(["Horno 1 (A)", "Horno 2 (A)", "Horno 2 (B)", "Horno 2 (C)"])
 
