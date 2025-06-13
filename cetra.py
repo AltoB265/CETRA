@@ -227,13 +227,6 @@ def auto_ubicar_piezas_state():
         st.session_state.carros_distribucion,
         st.session_state.demanda,
     )
-    # trigger a rerun so production results refresh immediately
-    rerun_fn = getattr(st, "experimental_rerun", getattr(st, "rerun", None))
-    if callable(rerun_fn):
-        try:
-            rerun_fn()
-        except RuntimeError:
-            pass
 
 
 def calcular_produccion_diaria():
@@ -406,12 +399,14 @@ def generar_cuadricula_horno(horno_id, matriz):
                 if not (pieza_actual and not es_inicio):
 
                     opciones = [None] + [p for p in PIEZA_INFO if horno_id in PIEZA_INFO[p]['hornos']]
+                    key = f"{horno_id}-{fila}-{col}"
+                    st.session_state[key] = pieza_actual
                     pieza_seleccionada = st.selectbox(
                         label=" ",
-                        options=opciones, 
+                        options=opciones,
                         index=0 if pieza_actual is None else opciones.index(pieza_actual),
-                        key=f"{horno_id}-{fila}-{col}",
-                        label_visibility="collapsed" 
+                        key=key,
+                        label_visibility="collapsed"
                     )
 
                     if pieza_seleccionada != pieza_actual:
