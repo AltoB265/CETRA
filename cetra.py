@@ -111,7 +111,33 @@ def es_posicion_valida(horno_id, matriz, fila, col, pieza):
     if pieza == '2TQ':
         return (fila == 0 and col == 0) or (fila == 0 and col == cols_matriz-1) or \
                (fila == filas_matriz-1 and col == 0) or (fila == filas_matriz-1 and col == cols_matriz-1)
-    
+
+    return True
+
+
+def editar_celda(matriz, horno_id, fila, col, nueva_pieza):
+    """Modify a cell removing the current block and optionally placing a new piece."""
+    celda = matriz[fila][col]
+    pieza_actual = celda["pieza"]
+    es_inicio = celda["es_inicio"]
+
+    if pieza_actual:
+        origen_fila, origen_col = (fila, col) if es_inicio else celda["pieza_origen"]
+        pieza_origen = matriz[origen_fila][origen_col]["pieza"]
+        filas_occ, cols_occ = get_ocupacion_pieza(pieza_origen)
+        for f in range(filas_occ):
+            for c in range(cols_occ):
+                if origen_fila + f < len(matriz) and origen_col + c < len(matriz[0]):
+                    if matriz[origen_fila + f][origen_col + c]["pieza_origen"] == (origen_fila, origen_col):
+                        matriz[origen_fila + f][origen_col + c] = {"pieza": None, "es_inicio": False, "pieza_origen": None}
+
+    if nueva_pieza is not None:
+        if es_posicion_valida(horno_id, matriz, fila, col, nueva_pieza):
+            filas_ocupadas, cols_ocupadas = get_ocupacion_pieza(nueva_pieza)
+            colocar_pieza_con_ocupacion(matriz, fila, col, nueva_pieza, filas_ocupadas, cols_ocupadas)
+            return True
+        else:
+            return False
     return True
 
 
@@ -205,7 +231,8 @@ def auto_ubicar_piezas(hornos_estado, ciclos_horno, carros_distribucion, demanda
                     continue
 
                 candidatos = [p for p in PIEZA_INFO if horno_id in PIEZA_INFO[p]['hornos']]
-                candidatos.sort(key=lambda p: faltante.get(p, 0), reverse=True)
+                prioridad = {'TZ': 0, 'LVS': 1, '2LVS': 1, '3LVS': 1}
+                candidatos.sort(key=lambda p: (prioridad.get(p, 2), -faltante.get(p, 0)))
                 for pieza in candidatos:
                     if faltante.get(pieza, 0) <= 0:
                         continue
@@ -396,34 +423,21 @@ def generar_cuadricula_horno(horno_id, matriz):
                             padding: 10px 0; margin: 2px;'>-</div>""", 
                         unsafe_allow_html=True
                     )
-                if not (pieza_actual and not es_inicio):
+                opciones = [None] + [p for p in PIEZA_INFO if horno_id in PIEZA_INFO[p]['hornos']]
+                key = f"{horno_id}-{fila}-{col}"
+                st.session_state[key] = pieza_actual
+                pieza_seleccionada = st.selectbox(
+                    label=" ",
+                    options=opciones,
+                    index=0 if pieza_actual is None else opciones.index(pieza_actual),
+                    key=key,
+                    label_visibility="collapsed"
+                )
 
-                    opciones = [None] + [p for p in PIEZA_INFO if horno_id in PIEZA_INFO[p]['hornos']]
-                    key = f"{horno_id}-{fila}-{col}"
-                    st.session_state[key] = pieza_actual
-                    pieza_seleccionada = st.selectbox(
-                        label=" ",
-                        options=opciones,
-                        index=0 if pieza_actual is None else opciones.index(pieza_actual),
-                        key=key,
-                        label_visibility="collapsed"
-                    )
-
-                    if pieza_seleccionada != pieza_actual:
-                        if pieza_seleccionada is None:
-                            if pieza_actual and es_inicio:
-                                filas_ocupadas, cols_ocupadas = get_ocupacion_pieza(pieza_actual)
-                                for f in range(filas_ocupadas):
-                                    for c in range(cols_ocupadas):
-                                        if fila + f < len(matriz) and col + c < len(matriz[0]):
-                                            if matriz[fila + f][col + c]["pieza_origen"] == (fila, col):
-                                                matriz[fila + f][col + c] = {"pieza": None, "es_inicio": False, "pieza_origen": None}
-                            matriz[fila][col] = {"pieza": None, "es_inicio": False, "pieza_origen": None}
-                        elif es_posicion_valida(horno_id, matriz, fila, col, pieza_seleccionada):
-                            filas_ocupadas, cols_ocupadas = get_ocupacion_pieza(pieza_seleccionada)
-                            colocar_pieza_con_ocupacion(matriz, fila, col, pieza_seleccionada, filas_ocupadas, cols_ocupadas)
-                        else:
-                            st.error(f"No se puede colocar {pieza_seleccionada} en esta posición")
+                if pieza_seleccionada != pieza_actual:
+                    ok = editar_celda(matriz, horno_id, fila, col, pieza_seleccionada)
+                    if not ok:
+                        st.error(f"No se puede colocar {pieza_seleccionada} en esta posición")
 
 tab1, tab2, tab3, tab4 = st.tabs(["Horno 1 (A)", "Horno 2 (A)", "Horno 2 (B)", "Horno 2 (C)"])
 

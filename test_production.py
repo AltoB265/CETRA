@@ -71,3 +71,17 @@ def test_diferencia_calculation():
     cumplimiento, diferencia = app.calcular_cumplimiento_demanda(prod, demanda)
     assert diferencia['LV'] == 20
     assert cumplimiento['LV'] == 100
+
+
+def test_auto_ubicar_prioridad_tz_vs_lvs():
+    estado = {
+        'H1': [[{'pieza': None, 'es_inicio': False, 'pieza_origen': None}]],
+        'H2A': [[{'pieza': None, 'es_inicio': False, 'pieza_origen': None}]],
+        'H2B': [[{'pieza': None, 'es_inicio': False, 'pieza_origen': None}]],
+        'H2C': [[{'pieza': None, 'es_inicio': False, 'pieza_origen': None}]],
+    }
+    ciclos = {'H1': 159, 'H2': 141}
+    carros = {'H1': 113, 'H2A': 113, 'H2B': 113, 'H2C': 113}
+    demanda = {'TZ': 1, 'LVS': 1000}
+    resultado = app.auto_ubicar_piezas(estado, ciclos, carros, demanda)
+    assert resultado['H1'][0][0]['pieza'] == 'TZ'
