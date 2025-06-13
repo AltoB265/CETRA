@@ -101,3 +101,16 @@ def test_editar_celda_restaura_si_invalido():
     ok = app.editar_celda(matriz, 'H1', 0, 1, 'TZ')
     assert not ok
     assert matriz[0][1]['pieza'] == 'LV'
+
+
+def test_editar_celda_quita_pieza_posicion_especifica():
+    """Removing a piece from a chosen cell should not disturb others."""
+    matriz = app.inicializar_matriz_detallada(1, 2)
+    matriz[0][0] = {'pieza': 'LV', 'es_inicio': True, 'pieza_origen': (0, 0)}
+    matriz[0][1] = {'pieza': 'TZ', 'es_inicio': True, 'pieza_origen': (0, 1)}
+
+    ok = app.editar_celda(matriz, 'H1', 0, 0, None)
+
+    assert ok
+    assert matriz[0][0]['pieza'] is None
+    assert matriz[0][1]['pieza'] == 'TZ'
