@@ -243,17 +243,17 @@ def calcular_produccion_diaria():
 
 def calcular_cumplimiento_demanda(produccion, demanda):
     cumplimiento = {}
-    insatisfaccion = {}
-    
+    diferencia = {}
+
     for pieza, d in demanda.items():
+        producidas = produccion.get(pieza, 0)
         if d > 0:
-            cumplimiento[pieza] = min(produccion.get(pieza, 0) / d * 100, 100)
-            insatisfaccion[pieza] = max(d - produccion.get(pieza, 0), 0)
+            cumplimiento[pieza] = min(producidas / d * 100, 100)
         else:
             cumplimiento[pieza] = 100
-            insatisfaccion[pieza] = 0
-    
-    return cumplimiento, insatisfaccion
+        diferencia[pieza] = d - producidas
+
+    return cumplimiento, diferencia
 
 
 if 'hornos_estado' not in st.session_state:
@@ -265,7 +265,12 @@ if 'hornos_estado' not in st.session_state:
     }
 
 if 'carros_distribucion' not in st.session_state:
-    st.session_state.carros_distribucion = {'H1': 43, 'H2A': 30, 'H2B': 10, 'H2C': 30}
+    st.session_state.carros_distribucion = {
+        'H1': 113,
+        'H2A': 40,
+        'H2B': 23,
+        'H2C': 53,
+    }
 
 if 'ciclos_horno' not in st.session_state:
     st.session_state.ciclos_horno = {'H1': 159, 'H2': 141}
@@ -438,7 +443,7 @@ with tab4:
 st.header("Resultados de Producción")
 
 produccion = calcular_produccion_diaria()
-cumplimiento, insatisfaccion = calcular_cumplimiento_demanda(
+cumplimiento, diferencia = calcular_cumplimiento_demanda(
     produccion,
     st.session_state.demanda,
 )
@@ -452,13 +457,13 @@ with col1:
         'Demanda': [st.session_state.demanda[p] for p in st.session_state.demanda],
         'Producción': [produccion[p] for p in st.session_state.demanda],
         'Cumplimiento (%)': [cumplimiento[p] for p in st.session_state.demanda],
-        'Insatisfecha': [insatisfaccion[p] for p in st.session_state.demanda]
+        'Diferencia': [diferencia[p] for p in st.session_state.demanda]
     })
     
     st.dataframe(df_resultados.style.format({
         'Producción': '{:.2f}',
         'Cumplimiento (%)': '{:.2f}',
-        'Insatisfecha': '{:.2f}'
+        'Diferencia': '{:.2f}'
     }))
     
     cumplimiento_promedio = sum(cumplimiento.values()) / len(cumplimiento)
