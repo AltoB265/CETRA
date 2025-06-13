@@ -227,6 +227,9 @@ def auto_ubicar_piezas_state():
         st.session_state.carros_distribucion,
         st.session_state.demanda,
     )
+    # trigger a rerun so production results refresh immediately
+    if st.runtime.exists():
+        st.experimental_rerun()
 
 
 def calcular_produccion_diaria():
