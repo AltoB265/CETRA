@@ -5,6 +5,9 @@ import plotly.express as px
 
 st.set_page_config(page_title="Sistema experto CETRA", page_icon="🏭", layout="wide")
 
+if 'iteration' not in st.session_state:
+    st.session_state.iteration = 0
+
 PIEZA_INFO = {
     'TZ': {'espacios': 1, 'peso': 17.03, 'color': '#FF5733', 'hornos': ['H1', 'H2A', 'H2B', 'H2C']},
     'LV': {'espacios': 1, 'peso': 9.10, 'color': '#33FF57', 'hornos': ['H1', 'H2A', 'H2B', 'H2C']},
@@ -111,7 +114,42 @@ def es_posicion_valida(horno_id, matriz, fila, col, pieza):
     if pieza == '2TQ':
         return (fila == 0 and col == 0) or (fila == 0 and col == cols_matriz-1) or \
                (fila == filas_matriz-1 and col == 0) or (fila == filas_matriz-1 and col == cols_matriz-1)
-    
+
+    return True
+
+
+def editar_celda(matriz, horno_id, fila, col, nueva_pieza):
+    """Modify a cell removing the current block and optionally placing a new piece.
+
+    If the new placement is invalid, the original piece is restored.
+    """
+    celda = matriz[fila][col]
+    pieza_actual = celda["pieza"]
+    es_inicio = celda["es_inicio"]
+
+    original_data = None
+    if pieza_actual:
+        origen_fila, origen_col = (fila, col) if es_inicio else celda["pieza_origen"]
+        pieza_origen = matriz[origen_fila][origen_col]["pieza"]
+        filas_occ, cols_occ = get_ocupacion_pieza(pieza_origen)
+        original_data = (origen_fila, origen_col, pieza_origen, filas_occ, cols_occ)
+        for f in range(filas_occ):
+            for c in range(cols_occ):
+                if origen_fila + f < len(matriz) and origen_col + c < len(matriz[0]):
+                    if matriz[origen_fila + f][origen_col + c]["pieza_origen"] == (origen_fila, origen_col):
+                        matriz[origen_fila + f][origen_col + c] = {"pieza": None, "es_inicio": False, "pieza_origen": None}
+
+    if nueva_pieza is not None:
+        if es_posicion_valida(horno_id, matriz, fila, col, nueva_pieza):
+            filas_ocupadas, cols_ocupadas = get_ocupacion_pieza(nueva_pieza)
+            colocar_pieza_con_ocupacion(matriz, fila, col, nueva_pieza, filas_ocupadas, cols_ocupadas)
+            return True
+        else:
+            # restore original piece if placement fails
+            if original_data:
+                o_f, o_c, pieza_rest, f_occ, c_occ = original_data
+                colocar_pieza_con_ocupacion(matriz, o_f, o_c, pieza_rest, f_occ, c_occ)
+            return False
     return True
 
 
@@ -134,22 +172,24 @@ def contar_piezas(matriz):
                 conteo[celda["pieza"]] += 1
     return conteo
 
-def calcular_produccion_diaria():
-    produccion_final = {pieza: 0 for pieza in DEMANDA_INICIAL}
-    
-    for horno_id, matriz in st.session_state.hornos_estado.items():
+
+def calcular_produccion(hornos_estado, ciclos_horno, carros_distribucion, demanda):
+    """Compute production using plain dictionaries (no Streamlit state)."""
+    produccion_final = {pieza: 0 for pieza in demanda}
+
+    for horno_id, matriz in hornos_estado.items():
         if matriz is None:
             continue
-            
+
         conteo = contar_piezas(matriz)
-        ciclos_diarios = st.session_state.ciclos_horno['H1' if horno_id == 'H1' else 'H2']
-        carros = st.session_state.carros_distribucion[horno_id]
+        ciclos_diarios = ciclos_horno['H1' if horno_id == 'H1' else 'H2']
+        carros = carros_distribucion[horno_id]
         factor_ciclos = ciclos_diarios / 113
-        
+
         for pieza, cantidad in conteo.items():
             if cantidad == 0:
                 continue
-                
+
             if pieza == 'TQ:PD':
                 produccion_final['TQ'] += int(cantidad * carros * factor_ciclos)
                 produccion_final['PD'] += int(cantidad * carros * factor_ciclos)
@@ -166,22 +206,90 @@ def calcular_produccion_diaria():
                 produccion_final['LVS'] += int(3 * cantidad * carros * factor_ciclos)
             elif pieza in produccion_final:
                 produccion_final[pieza] += int(cantidad * carros * factor_ciclos)
-    
+
     return produccion_final
 
-def calcular_cumplimiento_demanda(produccion):
+
+def auto_ubicar_piezas(hornos_estado, ciclos_horno, carros_distribucion, demanda):
+    """Fill empty slots prioritizing pieces with highest unmet demand."""
+    produccion_actual = calcular_produccion(hornos_estado, ciclos_horno, carros_distribucion, demanda)
+    faltante = {
+        p: demanda[p] - produccion_actual.get(p, 0)
+        for p in demanda
+    }
+
+    def delta_produccion(horno_id: str, pieza: str) -> dict[str, float]:
+        """Return the production increment if one slot is filled with ``pieza``."""
+        factor = ciclos_horno['H1' if horno_id == 'H1' else 'H2'] / 113
+        carros = carros_distribucion[horno_id]
+        if pieza == 'TQ:PD':
+            return {'TQ': carros * factor, 'PD': carros * factor}
+        if pieza == 'LV:PD':
+            return {'LV': carros * factor, 'PD': carros * factor}
+        if pieza == '2TQ':
+            return {'TQ': 2 * carros * factor}
+        if pieza == '2X':
+            return {'X': 2 * carros * factor}
+        if pieza == '2LVS':
+            return {'LVS': 2 * carros * factor}
+        if pieza == '3LVS':
+            return {'LVS': 3 * carros * factor}
+        return {pieza: carros * factor}
+
+    for horno_id, matriz in hornos_estado.items():
+        for fila in range(len(matriz)):
+            for col in range(len(matriz[0])):
+                if matriz[fila][col]["pieza"] is not None:
+                    continue
+
+                candidatos = [p for p in PIEZA_INFO if horno_id in PIEZA_INFO[p]['hornos']]
+                prioridad = {'TZ': 0, 'LVS': 1, '2LVS': 1, '3LVS': 1}
+                candidatos.sort(key=lambda p: (prioridad.get(p, 2), -faltante.get(p, 0)))
+                for pieza in candidatos:
+                    if faltante.get(pieza, 0) <= 0:
+                        continue
+                    if es_posicion_valida(horno_id, matriz, fila, col, pieza):
+                        f_occ, c_occ = get_ocupacion_pieza(pieza)
+                        colocar_pieza_con_ocupacion(matriz, fila, col, pieza, f_occ, c_occ)
+                        for p, inc in delta_produccion(horno_id, pieza).items():
+                            faltante[p] = max(faltante.get(p, 0) - inc, 0)
+                        break
+
+    return hornos_estado
+
+
+def auto_ubicar_piezas_state():
+    """Wrapper to auto-place pieces using Streamlit session state."""
+    st.session_state.hornos_estado = auto_ubicar_piezas(
+        st.session_state.hornos_estado,
+        st.session_state.ciclos_horno,
+        st.session_state.carros_distribucion,
+        st.session_state.demanda,
+    )
+
+
+def calcular_produccion_diaria():
+    """Wrapper over :func:`calcular_produccion` using Streamlit session state."""
+    return calcular_produccion(
+        st.session_state.hornos_estado,
+        st.session_state.ciclos_horno,
+        st.session_state.carros_distribucion,
+        st.session_state.demanda,
+    )
+
+def calcular_cumplimiento_demanda(produccion, demanda):
     cumplimiento = {}
-    insatisfaccion = {}
-    
-    for pieza, demanda in DEMANDA_INICIAL.items():
-        if demanda > 0:
-            cumplimiento[pieza] = min(produccion[pieza] / demanda * 100, 100) if demanda > 0 else 100
-            insatisfaccion[pieza] = max(demanda - produccion[pieza], 0)
+    diferencia = {}
+
+    for pieza, d in demanda.items():
+        producidas = produccion.get(pieza, 0)
+        if d > 0:
+            cumplimiento[pieza] = min(producidas / d * 100, 100)
         else:
             cumplimiento[pieza] = 100
-            insatisfaccion[pieza] = 0
-    
-    return cumplimiento, insatisfaccion
+        diferencia[pieza] = producidas - d
+
+    return cumplimiento, diferencia
 
 
 if 'hornos_estado' not in st.session_state:
@@ -193,10 +301,18 @@ if 'hornos_estado' not in st.session_state:
     }
 
 if 'carros_distribucion' not in st.session_state:
-    st.session_state.carros_distribucion = {'H1': 43, 'H2A': 30, 'H2B': 10, 'H2C': 30}
+    st.session_state.carros_distribucion = {
+        'H1': 113,
+        'H2A': 40,
+        'H2B': 23,
+        'H2C': 53,
+    }
 
 if 'ciclos_horno' not in st.session_state:
     st.session_state.ciclos_horno = {'H1': 159, 'H2': 141}
+
+if 'demanda' not in st.session_state:
+    st.session_state.demanda = DEMANDA_INICIAL.copy()
 
 # config. de la pagina
 st.title("🏭 Sistema CETRA")
@@ -231,6 +347,15 @@ with st.sidebar:
     if total_carros_h2 != 113:
         st.error(f"El total de carros del Horno 2 debe ser 113. Actual: {total_carros_h2}")
 
+    st.subheader("Demanda por Pieza")
+    for pieza in st.session_state.demanda:
+        st.session_state.demanda[pieza] = st.number_input(
+            pieza,
+            min_value=0,
+            value=st.session_state.demanda[pieza],
+            step=1,
+        )
+
 # reiniciar
 col1, col2, col3, col4, col5 = st.columns(5)
 
@@ -256,6 +381,8 @@ with col5:
         st.session_state.hornos_estado['H2A'] = inicializar_h2a()
         st.session_state.hornos_estado['H2B'] = inicializar_h2b()
         st.session_state.hornos_estado['H2C'] = inicializar_h2c()
+
+st.sidebar.button("Auto Ubicar Piezas", on_click=auto_ubicar_piezas_state)
 
 # cuadrícula del horno
 def generar_cuadricula_horno(horno_id, matriz):
@@ -308,32 +435,20 @@ def generar_cuadricula_horno(horno_id, matriz):
                             padding: 10px 0; margin: 2px;'>-</div>""", 
                         unsafe_allow_html=True
                     )
-                if not (pieza_actual and not es_inicio):
+                opciones = [None] + [p for p in PIEZA_INFO if horno_id in PIEZA_INFO[p]['hornos']]
+                key = f"{horno_id}-{fila}-{col}-{st.session_state.iteration}"
+                pieza_seleccionada = st.selectbox(
+                    label=" ",
+                    options=opciones,
+                    index=opciones.index(pieza_actual) if pieza_actual in opciones else 0,
+                    key=key,
+                    label_visibility="collapsed"
+                )
 
-                    opciones = [None] + [p for p in PIEZA_INFO if horno_id in PIEZA_INFO[p]['hornos']]
-                    pieza_seleccionada = st.selectbox(
-                        label=" ",
-                        options=opciones, 
-                        index=0 if pieza_actual is None else opciones.index(pieza_actual),
-                        key=f"{horno_id}-{fila}-{col}",
-                        label_visibility="collapsed" 
-                    )
-
-                    if pieza_seleccionada != pieza_actual:
-                        if pieza_seleccionada is None:
-                            if pieza_actual and es_inicio:
-                                filas_ocupadas, cols_ocupadas = get_ocupacion_pieza(pieza_actual)
-                                for f in range(filas_ocupadas):
-                                    for c in range(cols_ocupadas):
-                                        if fila + f < len(matriz) and col + c < len(matriz[0]):
-                                            if matriz[fila + f][col + c]["pieza_origen"] == (fila, col):
-                                                matriz[fila + f][col + c] = {"pieza": None, "es_inicio": False, "pieza_origen": None}
-                            matriz[fila][col] = {"pieza": None, "es_inicio": False, "pieza_origen": None}
-                        elif es_posicion_valida(horno_id, matriz, fila, col, pieza_seleccionada):
-                            filas_ocupadas, cols_ocupadas = get_ocupacion_pieza(pieza_seleccionada)
-                            colocar_pieza_con_ocupacion(matriz, fila, col, pieza_seleccionada, filas_ocupadas, cols_ocupadas)
-                        else:
-                            st.error(f"No se puede colocar {pieza_seleccionada} en esta posición")
+                if pieza_seleccionada != pieza_actual:
+                    ok = editar_celda(matriz, horno_id, fila, col, pieza_seleccionada)
+                    if not ok:
+                        st.error(f"No se puede colocar {pieza_seleccionada} en esta posición")
 
 tab1, tab2, tab3, tab4 = st.tabs(["Horno 1 (A)", "Horno 2 (A)", "Horno 2 (B)", "Horno 2 (C)"])
 
@@ -352,24 +467,27 @@ with tab4:
 st.header("Resultados de Producción")
 
 produccion = calcular_produccion_diaria()
-cumplimiento, insatisfaccion = calcular_cumplimiento_demanda(produccion)
+cumplimiento, diferencia = calcular_cumplimiento_demanda(
+    produccion,
+    st.session_state.demanda,
+)
 
 col1, col2 = st.columns(2)
 
 with col1:
     st.subheader("Cumplimiento de Demanda")
     df_resultados = pd.DataFrame({
-        'Pieza': list(DEMANDA_INICIAL.keys()),
-        'Demanda': [DEMANDA_INICIAL[p] for p in DEMANDA_INICIAL],
-        'Producción': [produccion[p] for p in DEMANDA_INICIAL],
-        'Cumplimiento (%)': [cumplimiento[p] for p in DEMANDA_INICIAL],
-        'Insatisfecha': [insatisfaccion[p] for p in DEMANDA_INICIAL]
+        'Pieza': list(st.session_state.demanda.keys()),
+        'Demanda': [st.session_state.demanda[p] for p in st.session_state.demanda],
+        'Producción': [produccion[p] for p in st.session_state.demanda],
+        'Cumplimiento (%)': [cumplimiento[p] for p in st.session_state.demanda],
+        'Diferencia': [diferencia[p] for p in st.session_state.demanda]
     })
     
     st.dataframe(df_resultados.style.format({
         'Producción': '{:.2f}',
         'Cumplimiento (%)': '{:.2f}',
-        'Insatisfecha': '{:.2f}'
+        'Diferencia': '{:.2f}'
     }))
     
     cumplimiento_promedio = sum(cumplimiento.values()) / len(cumplimiento)
@@ -377,8 +495,14 @@ with col1:
 
 with col2:
     st.subheader("Masa Total")
-    peso_programado = sum(DEMANDA_INICIAL[p] * PIEZA_INFO[p]['peso'] for p in DEMANDA_INICIAL)
-    peso_cargado = sum(produccion[p] * PIEZA_INFO[p]['peso'] for p in DEMANDA_INICIAL)
+    peso_programado = sum(
+        st.session_state.demanda[p] * PIEZA_INFO[p]['peso']
+        for p in st.session_state.demanda
+    )
+    peso_cargado = sum(
+        produccion[p] * PIEZA_INFO[p]['peso']
+        for p in st.session_state.demanda
+    )
     
     st.metric("Peso Programado (kg)", f"{peso_programado:.2f}")
     st.metric("Peso Cargado (kg)", f"{peso_cargado:.2f}")
@@ -427,5 +551,7 @@ st.markdown("""
 Este sistema experto utiliza reglas heurísticas para optimizar la distribución de piezas cerámicas en hornos túnel.
 El objetivo es maximizar la eficiencia cargando la mayor cantidad posible de piezas favoreciendo la relación MV/MM.
 """)
+
+st.session_state.iteration += 1
 
 #             
